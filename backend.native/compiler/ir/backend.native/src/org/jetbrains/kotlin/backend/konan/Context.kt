@@ -49,6 +49,7 @@ import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
 import org.jetbrains.kotlin.konan.target.CompilerOutputKind
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi2ir.generators.GeneratorContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
@@ -60,6 +61,7 @@ internal class SpecialDeclarationsFactory(val context: Context) {
     private val enumSpecialDeclarationsFactory by lazy { EnumSpecialDeclarationsFactory(context) }
     private val outerThisFields = mutableMapOf<ClassDescriptor, IrField>()
     private val bridgesDescriptors = mutableMapOf<Pair<IrSimpleFunction, BridgeDirections>, IrSimpleFunction>()
+    private val bridgeTargetsDescriptors = mutableMapOf<IrSimpleFunction, Pair<IrSimpleFunction, BridgeDirections>>()
     private val loweredEnums = mutableMapOf<ClassDescriptor, LoweredEnum>()
 
     object DECLARATION_ORIGIN_FIELD_FOR_OUTER_THIS :
@@ -93,7 +95,7 @@ internal class SpecialDeclarationsFactory(val context: Context) {
                 { "Function $descriptor is not needed in a bridge to call overridden function ${overriddenFunctionDescriptor.overriddenDescriptor.descriptor}" })
         val bridgeDirections = overriddenFunctionDescriptor.bridgeDirections
         return bridgesDescriptors.getOrPut(irFunction to bridgeDirections) {
-            val newDescriptor = SimpleFunctionDescriptorImpl.create(
+            val bridgeDescriptor = SimpleFunctionDescriptorImpl.create(
                     /* containingDeclaration = */ descriptor.containingDeclaration,
                     /* annotations           = */ Annotations.EMPTY,
                     /* name                  = */ "<bridge-$bridgeDirections>${irFunction.functionName}".synthesizedName,
@@ -102,17 +104,21 @@ internal class SpecialDeclarationsFactory(val context: Context) {
                 initializeBridgeDescriptor(this, descriptor, bridgeDirections.array)
             }
 
-            IrFunctionImpl(
+            val bridge = IrFunctionImpl(
                     irFunction.startOffset,
                     irFunction.endOffset,
                     DECLARATION_ORIGIN_BRIDGE_METHOD,
-                    newDescriptor
+                    bridgeDescriptor
             ).apply {
                 createParameterDeclarations()
                 this.parent = overriddenFunctionDescriptor.descriptor.parent
             }
+            bridgeTargetsDescriptors[bridge] = irFunction to bridgeDirections
+            bridge
         }
     }
+
+    fun getBridgeTarget(bridgeDescriptor: IrSimpleFunction) = bridgeTargetsDescriptors[bridgeDescriptor]
 
     fun getLoweredEnum(enumClassDescriptor: ClassDescriptor): LoweredEnum {
         assert(enumClassDescriptor.kind == ClassKind.ENUM_CLASS, { "Expected enum class but was: $enumClassDescriptor" })

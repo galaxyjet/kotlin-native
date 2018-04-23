@@ -180,12 +180,11 @@ internal class ClassVtablesBuilder(val classDescriptor: ClassDescriptor, val con
         // TODO: probably method table should contain all accessible methods to improve binary compatibility
     }
 
-}
+    private val IrClass.sortedOverridableOrOverridingMethods: List<SimpleFunctionDescriptor>
+        get() =
+            this.simpleFunctions()
+                    .filter { it.isOverridable || it.overriddenSymbols.isNotEmpty() }
+                    .filter { context.specialDeclarationsFactory.getBridgeTarget(it) == null }
+                    .sortedBy { it.functionName.localHash.value }
 
-private val IrClass.sortedOverridableOrOverridingMethods: List<SimpleFunctionDescriptor>
-    get() =
-        this.simpleFunctions()
-                .filter { it.isOverridable || it.overriddenSymbols.isNotEmpty() }
-                // TODO: extract method .isBridge()
-                .filterNot { it.name.asString().contains("<bridge-") }
-                .sortedBy { it.functionName.localHash.value }
+}
