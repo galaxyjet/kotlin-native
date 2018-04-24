@@ -23,11 +23,15 @@ import org.jetbrains.kotlin.backend.common.pop
 import org.jetbrains.kotlin.backend.common.push
 import org.jetbrains.kotlin.backend.konan.Context
 import org.jetbrains.kotlin.backend.konan.descriptors.allOverriddenDescriptors
+import org.jetbrains.kotlin.backend.konan.correspondingValueType
 import org.jetbrains.kotlin.backend.konan.descriptors.isInterface
 import org.jetbrains.kotlin.backend.konan.descriptors.target
+import org.jetbrains.kotlin.backend.konan.getTypeConversion
 import org.jetbrains.kotlin.backend.konan.ir.IrSuspendableExpression
 import org.jetbrains.kotlin.backend.konan.ir.IrSuspensionPoint
+import org.jetbrains.kotlin.backend.konan.ir.KonanIr
 import org.jetbrains.kotlin.backend.konan.irasdescriptors.*
+import org.jetbrains.kotlin.backend.konan.ir.KonanSymbols
 import org.jetbrains.kotlin.backend.konan.llvm.functionName
 import org.jetbrains.kotlin.backend.konan.llvm.localHash
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -48,16 +52,20 @@ import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.typeUtil.isNothing
 import org.jetbrains.kotlin.types.typeUtil.isUnit
 import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 
-private fun computeErasure(type: KotlinType, context: Context, erasure: MutableList<ClassDescriptor>) {
-    val irClass = context.ir.getClass(type)
+private fun computeErasure(type: KotlinType, ir: KonanIr, erasure: MutableList<ClassDescriptor>) {
+    val irClass = ir.getClass(type)
     if (irClass != null) {
-        erasure += irClass
+        erasure += if (type.correspondingValueType == null && type.makeNotNullable().correspondingValueType != null)
+                       ir.getClass(ir.symbols.getTypeConversion(type.makeNotNullable(), type)!!.descriptor.returnType!!)!!
+                   else
+                       irClass
     } else {
         val descriptor = type.constructor.declarationDescriptor
         if (descriptor is TypeParameterDescriptor) {
             descriptor.upperBounds.forEach {
-                computeErasure(it, context, erasure)
+                computeErasure(it, ir, erasure)
             }
         } else {
             TODO(descriptor.toString())
@@ -67,7 +75,7 @@ private fun computeErasure(type: KotlinType, context: Context, erasure: MutableL
 
 internal fun KotlinType.erasure(context: Context): List<ClassDescriptor> {
     val result = mutableListOf<ClassDescriptor>()
-    computeErasure(this, context, result)
+    computeErasure(this, context.ir, result)
     return result
 }
 
