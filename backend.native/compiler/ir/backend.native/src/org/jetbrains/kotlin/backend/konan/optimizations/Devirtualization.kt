@@ -1062,15 +1062,12 @@ internal object Devirtualization {
                     return expression
 
                 val descriptor = expression.descriptor
-//                val owner = (descriptor.containingDeclaration as ClassDescriptor)
-//                val maxUnfoldFactor = if (owner.isInterface) 3 else 1
-//                if (possibleCallees.size > maxUnfoldFactor) {
-//                    // Callsite too complicated to devirtualize.
-//                    return expression
-//                }
-
-                //println("ZZZ: $descriptor")
-                //possibleCallees.forEach { println("    ${it.receiverType}; ${it.callee} - ${it.callee.returnType}(${it.callee.parameterTypes.joinToString { ", " }})") }
+                val owner = (descriptor.containingDeclaration as ClassDescriptor)
+                val maxUnfoldFactor = if (owner.isInterface) 3 else 1
+                if (possibleCallees.size > maxUnfoldFactor) {
+                    // Callsite too complicated to devirtualize.
+                    return expression
+                }
 
                 val startOffset = expression.startOffset
                 val endOffset = expression.endOffset
