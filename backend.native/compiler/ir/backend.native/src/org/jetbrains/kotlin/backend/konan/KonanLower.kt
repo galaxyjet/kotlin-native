@@ -164,6 +164,9 @@ internal class KonanLower(val context: Context) {
             // validateIrFile(context, irFile) // Temporarily disabled until moving to new IR finished.
             Autoboxing(context).lower(irFile)
         }
+        phaser.phase(KonanPhase.LOWER_WHEN_ENUM_ONLY) {
+            EnumOnlyWhenLowering(context).lower(irFile)
+        }
         phaser.phase(KonanPhase.RETURNS_INSERTION) {
             ReturnsInsertionLowering(context).lower(irFile)
         }
