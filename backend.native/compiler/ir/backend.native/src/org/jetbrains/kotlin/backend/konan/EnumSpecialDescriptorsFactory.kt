@@ -132,7 +132,7 @@ internal class EnumSpecialDeclarationsFactory(val context: Context) {
     private fun createEnumEntriesMap(enumClassDescriptor: ClassDescriptor): Map<Name, Int> {
         val map = mutableMapOf<Name, Int>()
         enumClassDescriptor.enumEntries
-                .sortedBy { it.name }
+//                .sortedBy { it.name }
                 .forEachIndexed { index, entry -> map.put(entry.name, index) }
         return map
     }

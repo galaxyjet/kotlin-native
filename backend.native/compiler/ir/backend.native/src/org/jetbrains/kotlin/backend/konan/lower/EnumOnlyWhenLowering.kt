@@ -3,25 +3,19 @@ package org.jetbrains.kotlin.backend.konan.lower
 import org.jetbrains.kotlin.backend.common.FileLoweringPass
 import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
 import org.jetbrains.kotlin.backend.konan.Context
-import org.jetbrains.kotlin.backend.konan.descriptors.contributedMethods
 import org.jetbrains.kotlin.backend.konan.irasdescriptors.containingDeclaration
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrVariableImpl
-import org.jetbrains.kotlin.ir.descriptors.IrTemporaryVariableDescriptor
 import org.jetbrains.kotlin.ir.descriptors.IrTemporaryVariableDescriptorImpl
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetValueImpl
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
-import org.jetbrains.kotlin.ir.util.endOffset
 import org.jetbrains.kotlin.ir.util.getArguments
-import org.jetbrains.kotlin.ir.util.startOffset
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.types.TypeUtils
 
 
 internal class EnumOnlyWhenLowering(val context: Context) : FileLoweringPass {
@@ -41,12 +35,12 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
 
         val temporaryVariable = expression.statements[0] as IrVariable
         val declarationDescriptor = temporaryVariable.type.constructor.declarationDescriptor
-        val variableClass = declarationDescriptor as? ClassDescriptor ?: return super.visitBlock(expression)
-        if (variableClass.kind != ClassKind.ENUM_CLASS) {
+        val enumClassDescriptor = declarationDescriptor as? ClassDescriptor ?: return super.visitBlock(expression)
+        if (enumClassDescriptor.kind != ClassKind.ENUM_CLASS) {
             return super.visitBlock(expression)
         }
         val whenExpr = expression.statements[1] as IrWhen
-        val getOrdinal = IrCallImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, getPropertyByName(variableClass, "ordinal")).apply {
+        val getOrdinal = IrCallImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, getPropertyByName(enumClassDescriptor, "ordinal")).apply {
             dispatchReceiver = IrGetValueImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, temporaryVariable.symbol)
         }
         val decl = IrTemporaryVariableDescriptorImpl(temporaryVariable.descriptor, Name.identifier("temp_ordinal"), context.builtIns.intType)
@@ -56,6 +50,7 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
         val comparator = context.ir.symbols.areEqualByValue.first {
             it.owner.valueParameters[0].type == context.builtIns.intType
         }
+        val loweredEnum = context.specialDeclarationsFactory.getLoweredEnum(enumClassDescriptor)
         whenExpr.branches.forEach {
             // TODO: The last one condition is const
             val areEqualCall = it.condition as? IrCall ?: return super.visitBlock(expression)
@@ -63,7 +58,9 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
                 return super.visitBlock(expression)
             }
             val getCall = areEqualCall.getArguments()[1].second as IrCall
+            // TODO, array index is not same as item's ordinal.
             val ordinal = getCall.getArguments()[1].second as IrConst<Int>
+
             it.condition = IrCallImpl(areEqualCall.startOffset, areEqualCall.endOffset, comparator).apply {
                 putValueArgument(0, ordinal)
                 putValueArgument(1, getOrdinalVariable)
@@ -75,12 +72,4 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
             context.ir.symbols.symbolTable.referenceSimpleFunction(descriptor.unsubstitutedMemberScope
                     .getContributedVariables(Name.identifier(name), NoLookupLocation.FROM_BACKEND)
                     .single().getter!!)
-}
-
-
-
-private fun IrEnumEntry.getOrdinal(context: Context): Int {
-    val enumClassDescriptor = this.containingDeclaration as ClassDescriptor
-    val loweredEnum = context.specialDeclarationsFactory.getLoweredEnum(enumClassDescriptor)
-    return loweredEnum.entriesMap[this.name]!!
 }
