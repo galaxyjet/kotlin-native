@@ -35,46 +35,38 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
         if (expression.origin != IrStatementOrigin.WHEN) {
             return super.visitBlock(expression)
         }
-        context.log { "Found when statement" }
         // when-block should have two children: temporary variable and when itself
         // TODO: this assumption looks fragile
         assert(expression.statements.size == 2)
 
         val temporaryVariable = expression.statements[0] as IrVariable
         val declarationDescriptor = temporaryVariable.type.constructor.declarationDescriptor
-        val variableClass = if (declarationDescriptor is ClassDescriptor) {
-            declarationDescriptor
-        } else {
-            context.log { "$declarationDescriptor is not ClassDescriptor" }
-            return super.visitBlock(expression)
-        }
+        val variableClass = declarationDescriptor as? ClassDescriptor ?: return super.visitBlock(expression)
         if (variableClass.kind != ClassKind.ENUM_CLASS) {
-            context.log { "${variableClass.kind} is not enum_entry" }
             return super.visitBlock(expression)
         }
         val whenExpr = expression.statements[1] as IrWhen
         val getOrdinal = IrCallImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, getPropertyByName(variableClass, "ordinal")).apply {
             dispatchReceiver = IrGetValueImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, temporaryVariable.symbol)
         }
-        val decl = IrTemporaryVariableDescriptorImpl(temporaryVariable.descriptor, Name.identifier("lolkek"), context.builtIns.intType)
+        val decl = IrTemporaryVariableDescriptorImpl(temporaryVariable.descriptor, Name.identifier("temp_ordinal"), context.builtIns.intType)
         val ordinalVariable = IrVariableImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, IrDeclarationOrigin.IR_TEMPORARY_VARIABLE, decl, getOrdinal)
         expression.statements.add(1, ordinalVariable)
+        val getOrdinalVariable = IrGetValueImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, ordinalVariable.symbol)
+        val comparator = context.ir.symbols.areEqualByValue.first {
+            it.owner.valueParameters[0].type == context.builtIns.intType
+        }
         whenExpr.branches.forEach {
-            if (it.condition !is IrCall) {
-                return super.visitBlock(expression)
-            }
-            val areEqualCall = it.condition as IrCall
+            // TODO: The last one condition is const
+            val areEqualCall = it.condition as? IrCall ?: return super.visitBlock(expression)
             if (areEqualCall.symbol != context.ir.symbols.areEqual) {
                 return super.visitBlock(expression)
             }
             val getCall = areEqualCall.getArguments()[1].second as IrCall
             val ordinal = getCall.getArguments()[1].second as IrConst<Int>
-            val comparator = context.ir.symbols.areEqualByValue.first {
-                it.owner.valueParameters[0].type == ordinal.type
-            }
             it.condition = IrCallImpl(areEqualCall.startOffset, areEqualCall.endOffset, comparator).apply {
                 putValueArgument(0, ordinal)
-                putValueArgument(1, IrGetValueImpl(temporaryVariable.startOffset, temporaryVariable.endOffset, ordinalVariable.symbol))
+                putValueArgument(1, getOrdinalVariable)
             }
         }
         return expression
