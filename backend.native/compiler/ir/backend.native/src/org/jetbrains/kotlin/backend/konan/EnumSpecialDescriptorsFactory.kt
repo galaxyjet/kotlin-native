@@ -45,7 +45,8 @@ internal data class LoweredEnum(val implObject: IrClass,
                                 val valuesGetter: IrSimpleFunction,
                                 val itemGetterSymbol: IrSimpleFunctionSymbol,
                                 val itemGetterDescriptor: FunctionDescriptor,
-                                val entriesMap: Map<Name, Int>)
+                                val entriesMap: Map<Name, Int>,
+                                val ordinals: Map<Name, Int>)
 
 internal class EnumSpecialDeclarationsFactory(val context: Context) {
     fun createLoweredEnum(enumClassDescriptor: ClassDescriptor): LoweredEnum {
@@ -87,7 +88,15 @@ internal class EnumSpecialDeclarationsFactory(val context: Context) {
                 valuesField,
                 valuesGetter,
                 itemGetterSymbol, itemGetterDescriptor,
-                createEnumEntriesMap(enumClassDescriptor))
+                createEnumEntriesMap(enumClassDescriptor),
+                createEnumOrdinals(enumClassDescriptor))
+    }
+
+    private fun createEnumOrdinals(enumClassDescriptor: ClassDescriptor): Map<Name, Int> {
+        val map = mutableMapOf<Name, Int>()
+        enumClassDescriptor.enumEntries
+                .forEachIndexed { index, entry -> map[entry.name] = index }
+        return map
     }
 
     private fun createValuesGetterDescriptor(enumClassDescriptor: ClassDescriptor, implObjectDescriptor: ClassDescriptor)
@@ -132,7 +141,7 @@ internal class EnumSpecialDeclarationsFactory(val context: Context) {
     private fun createEnumEntriesMap(enumClassDescriptor: ClassDescriptor): Map<Name, Int> {
         val map = mutableMapOf<Name, Int>()
         enumClassDescriptor.enumEntries
-//                .sortedBy { it.name }
+                .sortedBy { it.name }
                 .forEachIndexed { index, entry -> map.put(entry.name, index) }
         return map
     }

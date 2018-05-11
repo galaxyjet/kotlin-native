@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.ir.declarations.impl.IrVariableImpl
 import org.jetbrains.kotlin.ir.descriptors.IrTemporaryVariableDescriptorImpl
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrCallImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetValueImpl
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.util.getArguments
@@ -59,10 +60,11 @@ private class EnumOnlyWhenTransformer(val context: Context) : IrElementTransform
             }
             val getCall = areEqualCall.getArguments()[1].second as IrCall
             // TODO, array index is not same as item's ordinal.
-            val ordinal = getCall.getArguments()[1].second as IrConst<Int>
-
+            val id = getCall.getArguments()[1].second as IrConst<Int>
+            val name = loweredEnum.entriesMap.filterValues { it == id.value }.toList().first().first
+            val ordinal = loweredEnum.ordinals[name]!!
             it.condition = IrCallImpl(areEqualCall.startOffset, areEqualCall.endOffset, comparator).apply {
-                putValueArgument(0, ordinal)
+                putValueArgument(0, IrConstImpl.int(id.startOffset, id.endOffset, context.builtIns.intType, ordinal))
                 putValueArgument(1, getOrdinalVariable)
             }
         }
